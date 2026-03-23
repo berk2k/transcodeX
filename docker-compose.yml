@@ -7,5 +7,3 @@ services:
     environment:
       - SERVICES=s3,sqs,dynamodb
       - DEBUG=0
-    volumes:
-      - ".localstack:/var/lib/localstack"
