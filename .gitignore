@@ -42,3 +42,4 @@ Thumbs.db
 *.avi
 *.mov
 tmp/
+testdata/
