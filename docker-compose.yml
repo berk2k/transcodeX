@@ -1,0 +1,12 @@
+services:
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: transcodeX-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,dynamodb
+      - DEBUG=0
+    volumes:
+      - ".localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
