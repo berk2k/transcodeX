@@ -38,6 +38,7 @@ func main() {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	http.HandleFunc("/jobs", handler.GetJob)
 
 	port := os.Getenv("UPLOAD_PORT")
 	if port == "" {

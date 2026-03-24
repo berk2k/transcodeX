@@ -20,18 +20,23 @@ type UploadResponse struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-type Result struct {
-	JobID    string
-	Duration time.Duration
-	Success  bool
+type JobStatus struct {
+	JobID     string `json:"jobId"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
-func uploadVideo(uploadURL, filePath string) (Result, error) {
-	start := time.Now()
+type Result struct {
+	JobID          string
+	UploadDuration time.Duration
+	TotalDuration  time.Duration
+	Success        bool
+}
 
+func uploadVideo(uploadURL, filePath string) (UploadResponse, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return Result{}, err
+		return UploadResponse{}, err
 	}
 	defer f.Close()
 
@@ -39,29 +44,44 @@ func uploadVideo(uploadURL, filePath string) (Result, error) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("video", filePath)
 	if err != nil {
-		return Result{}, err
+		return UploadResponse{}, err
 	}
 	io.Copy(part, f)
 	writer.Close()
 
 	resp, err := http.Post(uploadURL, writer.FormDataContentType(), &buf)
 	if err != nil {
-		return Result{}, err
+		return UploadResponse{}, err
 	}
 	defer resp.Body.Close()
 
 	var uploadResp UploadResponse
 	json.NewDecoder(resp.Body).Decode(&uploadResp)
-
-	return Result{
-		JobID:    uploadResp.JobID,
-		Duration: time.Since(start),
-		Success:  resp.StatusCode == http.StatusAccepted,
-	}, nil
+	return uploadResp, nil
 }
 
-func runLoadTest(uploadURL, filePath string, jobCount int) {
-	fmt.Printf("\n=== Load Test: %d jobs ===\n", jobCount)
+func waitForCompletion(jobsURL, jobID string, timeout time.Duration) (bool, time.Duration) {
+	start := time.Now()
+	for time.Since(start) < timeout {
+		resp, err := http.Get(fmt.Sprintf("%s?id=%s", jobsURL, jobID))
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		var status JobStatus
+		json.NewDecoder(resp.Body).Decode(&status)
+		resp.Body.Close()
+
+		if status.Status == "completed" || status.Status == "failed" {
+			return status.Status == "completed", time.Since(start)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false, timeout
+}
+
+func runLoadTest(uploadURL, jobsURL, filePath string, jobCount int) {
+	fmt.Printf("\n=== Load Test: %d concurrent jobs ===\n", jobCount)
 
 	results := make([]Result, jobCount)
 	var wg sync.WaitGroup
@@ -71,29 +91,42 @@ func runLoadTest(uploadURL, filePath string, jobCount int) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			result, err := uploadVideo(uploadURL, filePath)
+
+			uploadStart := time.Now()
+			uploadResp, err := uploadVideo(uploadURL, filePath)
 			if err != nil {
 				results[idx] = Result{Success: false}
 				return
 			}
-			results[idx] = result
+			uploadDuration := time.Since(uploadStart)
+
+			success, waitDuration := waitForCompletion(jobsURL, uploadResp.JobID, 60*time.Second)
+			results[idx] = Result{
+				JobID:          uploadResp.JobID,
+				UploadDuration: uploadDuration,
+				TotalDuration:  uploadDuration + waitDuration,
+				Success:        success,
+			}
 		}(i)
 	}
 
 	wg.Wait()
 	totalDuration := time.Since(start)
 
-	// Calculate stats
 	var successful, failed int
 	var totalLatency time.Duration
 	var maxLatency time.Duration
+	var minLatency = time.Hour
 
 	for _, r := range results {
 		if r.Success {
 			successful++
-			totalLatency += r.Duration
-			if r.Duration > maxLatency {
-				maxLatency = r.Duration
+			totalLatency += r.TotalDuration
+			if r.TotalDuration > maxLatency {
+				maxLatency = r.TotalDuration
+			}
+			if r.TotalDuration < minLatency {
+				minLatency = r.TotalDuration
 			}
 		} else {
 			failed++
@@ -107,26 +140,23 @@ func runLoadTest(uploadURL, filePath string, jobCount int) {
 
 	throughput := float64(successful) / totalDuration.Seconds()
 
-	fmt.Printf("Jobs:        %d total, %d successful, %d failed\n", jobCount, successful, failed)
-	fmt.Printf("Duration:    %v\n", totalDuration.Round(time.Millisecond))
-	fmt.Printf("Throughput:  %.2f jobs/sec (upload)\n", throughput)
-	fmt.Printf("Avg latency: %v\n", avgLatency.Round(time.Millisecond))
-	fmt.Printf("Max latency: %v\n", maxLatency.Round(time.Millisecond))
+	fmt.Printf("Jobs:         %d total, %d completed, %d failed\n", jobCount, successful, failed)
+	fmt.Printf("Total time:   %v\n", totalDuration.Round(time.Millisecond))
+	fmt.Printf("Throughput:   %.2f jobs/sec\n", throughput)
+	fmt.Printf("Avg e2e:      %v\n", avgLatency.Round(time.Millisecond))
+	fmt.Printf("Min e2e:      %v\n", minLatency.Round(time.Millisecond))
+	fmt.Printf("Max e2e:      %v\n", maxLatency.Round(time.Millisecond))
 }
 
 func main() {
 	godotenv.Load()
 
 	uploadURL := "http://localhost:8080/upload"
+	jobsURL := "http://localhost:8080/jobs"
 	filePath := "testdata/upload_test.mov"
 
-	if len(os.Args) > 1 {
-		filePath = os.Args[1]
-	}
-
-	// Test with different job counts
-	for _, count := range []int{5, 10, 20} {
-		runLoadTest(uploadURL, filePath, count)
-		time.Sleep(2 * time.Second) // wait between tests
+	for _, count := range []int{1, 2, 4, 8} {
+		runLoadTest(uploadURL, jobsURL, filePath, count)
+		time.Sleep(3 * time.Second)
 	}
 }

@@ -90,3 +90,25 @@ func (h *Handler) UploadVideo(w http.ResponseWriter, r *http.Request) {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobID := r.URL.Query().Get("id")
+	if jobID == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := getJob(r.Context(), h.DynamoDBClient, h.TableName, jobID)
+	if err != nil {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
