@@ -51,12 +51,8 @@ func (h *Handler) UploadVideo(w http.ResponseWriter, r *http.Request) {
 	s3Key := fmt.Sprintf("uploads/%s/%s", jobID, header.Filename)
 
 	// Upload to S3
-	_, err = h.S3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: &h.RawBucket,
-		Key:    &s3Key,
-		Body:   file,
-	})
-	if err != nil {
+	size := r.ContentLength
+	if err := h.uploadToS3(r.Context(), file, size, h.RawBucket, s3Key); err != nil {
 		http.Error(w, "failed to upload to S3", http.StatusInternalServerError)
 		return
 	}
