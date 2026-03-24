@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -39,7 +40,11 @@ func main() {
 		Logger:          logger,
 	}
 
-	pool := worker.NewPool(2, processor, logger)
+	workerCount := 2
+	if v := os.Getenv("WORKER_COUNT"); v != "" {
+		fmt.Sscanf(v, "%d", &workerCount)
+	}
+	pool := worker.NewPool(workerCount, processor, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

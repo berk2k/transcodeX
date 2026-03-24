@@ -155,8 +155,6 @@ func main() {
 	jobsURL := "http://localhost:8080/jobs"
 	filePath := "testdata/upload_test.mov"
 
-	for _, count := range []int{1, 2, 4, 8} {
-		runLoadTest(uploadURL, jobsURL, filePath, count)
-		time.Sleep(3 * time.Second)
-	}
+	// Fixed 4 jobs, varying worker count is done via WORKER_COUNT env
+	runLoadTest(uploadURL, jobsURL, filePath, 4)
 }
