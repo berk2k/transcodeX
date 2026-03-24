@@ -30,6 +30,18 @@ func (p *Processor) Process(ctx context.Context, job Job) {
 		return
 	}
 
+	// Start visibility timeout extender
+	extCtx, cancelExt := context.WithCancel(ctx)
+	defer cancelExt()
+
+	extender := &VisibilityExtender{
+		Client:        p.SQSClient,
+		QueueURL:      p.QueueURL,
+		ReceiptHandle: job.ReceiptHandle,
+		Logger:        p.Logger,
+	}
+	extender.Start(extCtx)
+
 	// 2. Download from S3
 	localPath, err := p.downloadFromS3(ctx, job.Bucket, job.S3Key, job.JobID)
 	if err != nil {
@@ -39,7 +51,7 @@ func (p *Processor) Process(ctx context.Context, job Job) {
 	}
 
 	// 3. Transcode with FFmpeg
-	result, err := ffmpeg.Transcode(localPath, job.JobID)
+	result, err := ffmpeg.Transcode(ctx, localPath, job.JobID)
 	if err != nil {
 		p.Logger.Error("failed to transcode", "jobID", job.JobID, "error", err)
 		p.updateJobStatus(ctx, job.JobID, "failed")

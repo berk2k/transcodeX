@@ -1,6 +1,7 @@
 package ffmpeg
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,7 +13,7 @@ type Result struct {
 	InputPath  string
 }
 
-func Transcode(inputPath, jobID string) (*Result, error) {
+func Transcode(ctx context.Context, inputPath, jobID string) (*Result, error) {
 	outputDir := filepath.Join("tmp", jobID)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("create output dir: %w", err)
@@ -32,11 +33,15 @@ func Transcode(inputPath, jobID string) (*Result, error) {
 		outputPath,
 	}
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			Cleanup(inputPath, outputPath)
+			return nil, fmt.Errorf("ffmpeg cancelled: %w", ctx.Err())
+		}
 		return nil, fmt.Errorf("ffmpeg failed: %w", err)
 	}
 
