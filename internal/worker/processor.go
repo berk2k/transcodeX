@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/berk2k/transcodeX/internal/ffmpeg"
+	"github.com/berk2k/transcodeX/internal/observability"
 )
 
 type Processor struct {
@@ -23,10 +24,12 @@ type Processor struct {
 
 func (p *Processor) Process(ctx context.Context, job Job) {
 	p.Logger.Info("processing job", "jobID", job.JobID, "s3Key", job.S3Key)
+	observability.Global.JobsReceived.Add(1)
 
 	// 1. Update status to processing
 	if err := p.updateJobStatus(ctx, job.JobID, "processing"); err != nil {
 		p.Logger.Error("failed to update status", "jobID", job.JobID, "error", err)
+		observability.Global.JobsFailed.Add(1)
 		return
 	}
 
@@ -78,4 +81,5 @@ func (p *Processor) Process(ctx context.Context, job Job) {
 	ffmpeg.Cleanup(localPath, result.OutputPath)
 
 	p.Logger.Info("job completed", "jobID", job.JobID, "outputKey", outputKey)
+	observability.Global.JobsCompleted.Add(1)
 }

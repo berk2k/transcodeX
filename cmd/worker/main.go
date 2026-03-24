@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	appconfig "github.com/berk2k/transcodeX/internal/config"
+	"github.com/berk2k/transcodeX/internal/observability"
 	"github.com/berk2k/transcodeX/internal/worker"
 	"github.com/joho/godotenv"
 )
@@ -49,6 +50,8 @@ func main() {
 		Logger:   logger,
 	}
 
+	observability.StartServer("9090")
+	logger.Info("metrics server starting", "port", "9090")
 	// Start pool and poller
 	pool.Start(ctx)
 	go poller.Start(ctx)
