@@ -119,7 +119,7 @@ func (r *bytesReader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// TempFile helper — multipart için gerekli
+// TempFile helper — multipart
 func saveToTemp(file multipart.File, jobID string) (string, int64, error) {
 	tmpPath := fmt.Sprintf("tmp/%s/upload_tmp", jobID)
 	if err := os.MkdirAll(fmt.Sprintf("tmp/%s", jobID), 0755); err != nil {
